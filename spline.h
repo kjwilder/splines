@@ -2,7 +2,6 @@
 #define SPLINE_H
 
 #include "grid.h"
-#include "landmark.h"
 #include "view.h"
 
 //___________________________________________________________________________
