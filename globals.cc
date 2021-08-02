@@ -1,8 +1,5 @@
 #define GLOBALS_C
 
-//___________________________________________________________________________
-// Include files
- 
 #include <cstdlib>
 #include <cstring>
 #include <string>

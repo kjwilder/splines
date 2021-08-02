@@ -6,6 +6,7 @@ SHELL = /bin/sh
 
 # Indicate how to compile and link the program.
 CC = g++ 
+# CC = clang 
 CCINCS = -I/usr/local/include
 #CCOPTS = -g -Wall -DUSE_ASSERTS -fno-implicit-templates
 CCOPTS = -g -Wall -DUSE_ASSERTS -Wno-c++11-extensions
