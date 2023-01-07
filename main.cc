@@ -25,15 +25,15 @@ int main(int argc, char** argv)
     exit(1);
   }
   set_command_line_globals(argc, argv);
+  // Dump the values of global variables to the dumpfile.
+  // dump_globals(dumpfile);
+
 
   // Seed the random number generator.
   if (seed == 0)
     seed = time(0);
   srand48((time_t) seed);
   
-  // Dump the values of global variables to the dumpfile.
-  dump_globals(dumpfile);
-
   // Set the impurity function
   // impfunction impfn;
   // set_impurity_func(impmeasure, impfn, 0);
