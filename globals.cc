@@ -1,268 +1,294 @@
-#define GLOBALS_C
+#define GLOBALS_C_
 
-#include <cstdlib>
-#include <cstring>
-#include <string>
 #include <iostream>
 #include <fstream>
+#include <cstdlib>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "includes.h"
+using std::cerr;
+using std::string;
+using std::vector;
+
 #include "globals.h"
 
-using namespace std;
-
-// Function prototypes
-
-extern void parse_equation(char* eqn, char*& var, char*& val);
-extern int set_global(char* var, char* val);
- 
-//___________________________________________________________________________
+// __________________________________________________________________________
 // Types and lists needed to keep track of global variables.
 
-enum {boollistvar, intvar, longvar, floatvar, doublevar, stringvar};
+enum Types { intvar, longvar, doublevar, stringvar };
 
-struct typedesc { char *v; void *p; int t; };
+struct vardescriptor { void *ptr; Types type; bool is_vector;};
 
-
-typedesc varlist[] = 
-{ 
-#define GLOBAL(x, y) { strdup(#y), &y, x##var },
-#define GLOBALI(x, y, z) { strdup(#y), &y, x##var },
-#define GLOBALB(x, y) { strdup(#x), x, boollistvar },
-#include "globlist.h"  
+std::unordered_map<string, vardescriptor> varmap = {
+#define GLOBAL(x, y, z) {#y, {&y, x##var, false}},
+#define GLOBALV(x, y, z) {#y, {&y, x##var, true}},
+#include "globlist.h"
 #undef GLOBAL
-#undef GLOBALI
-#undef GLOBALB
-  { strdup(""), 0, 0 }
+#undef GLOBALV
 };
-    
-//___________________________________________________________________________
-// Initialize the non-zero, non-null global variables.
 
-void init_globals()
-{
-#define GLOBAL(x, y)
-#define GLOBALI(x, y, z) y = z;
-#define GLOBALB(x, y) { for (int i=0; i < y - 1; ++i) x[i] = 0; x[y - 1] = 'b'; }
-#include "globlist.h"  
-#undef GLOBAL
-#undef GLOBALI
-#undef GLOBALB
+// __________________________________________________________________________
 
-} // init_globals
-
-//___________________________________________________________________________
-// If argv[1] is not an assigment, it is the name of a parameter file. 
-
-void get_parfile(int argc, char** argv, string& parfile)
-{
-  if (argc > 1 && strchr(argv[1], '=') == 0)
-    parfile = argv[1];
-
-} // get_parfile
-
-//___________________________________________________________________________
-// argv may contain statements of the form var=value.  Use these statements
-// to set global variables.
-
-void parse_argv(int argc, char** argv)
-{
-  // Skip argv[1] if it was the name of a parameter file
-  int count = (argc > 1 && strchr(argv[1], '=') == 0) ? 2 : 1;
-
-  // Parse the remaining vectors of argv
-  while (count < argc)
-  {
-    char *var, *val;
-    parse_equation(argv[count++], var, val);
-    if (var != 0 && !set_global(var, val))
-      cerr << "Invalid variable [" << var << "] on command line." << endl;
+static string strip(const string& s) {
+  string stripped;
+  auto first = s.find_first_not_of(" \t\n\r");
+  if (first == string::npos) {
+    stripped = s;
+  } else {
+    auto last =  s.find_last_not_of(" \t\n\r");
+    stripped = s.substr(first,  last - first + 1);
   }
- 
-} // parse_argv
+  return stripped;
+}
 
-//___________________________________________________________________________
+// __________________________________________________________________________
 
-int parse_parfile(string& parfile)
-{
-  ifstream ifs(parfile);
-  if (!ifs)
+vector<string> split(const string& text) {
+  vector<string> splits;
+  if (text.empty()) {
+    return splits;
+  }
+  std::size_t start = 0;
+  std::size_t end = text.find(',', start + 1);
+  while (end != string::npos) {
+    auto token = strip(text.substr(start, end - start));
+    if (!token.empty()) {
+      splits.push_back(token);
+    }
+    start = end + 1;
+    end = text.find(',', start + 1);
+  }
+  splits.push_back(strip(text.substr(start)));
+  return splits;
+}
+
+// __________________________________________________________________________
+
+template<class T>
+void print_value(std::ostream& os, const vardescriptor& td, T inst) {
+  os << *static_cast<T*>(td.ptr);
+}
+
+template<class T, class F>
+void fill_value(const vardescriptor& td, const string& val, T inst, F func) {
+  *static_cast<T*>(td.ptr) = func(val.c_str());
+}
+
+// __________________________________________________________________________
+
+template<class T>
+void print_vector_value(std::ostream& os, const T& val, Types t) {
+  os << val;
+}
+
+template<>
+void print_vector_value<string>(std::ostream& os, const string& val, Types t) {
+    os << "\"" << val << "\"";
+}
+
+template<class T>
+void print_vector(std::ostream& os, const vardescriptor& td, T inst) {
+  const vector<T>& vec = *static_cast<vector<T>*>(td.ptr);
+  os << "{";
+  if (vec.size() > 0) {
+    for (int i = 0; i < vec.size() - 1; ++i) {
+      print_vector_value(os, vec[i], td.type);
+      os << ", ";
+    }
+    print_vector_value(os, vec[vec.size() - 1], td.type);
+  }
+  os << "}";
+}
+
+template<class T, class F>
+void fill_vector(const vardescriptor& td, const string& val, T inst, F func) {
+  const vector<string> values = split(strip(val).substr(1, val.size() - 2));
+  vector<T>* ptr = static_cast<vector<T>*>(td.ptr);
+  ptr->resize(values.size());
+  for (int i = 0; i < values.size(); ++i) {
+    (*ptr)[i] = func(values[i].c_str());
+  }
+}
+
+// __________________________________________________________________________
+// Set the global variable 'var' equal to 'val' (after casting)
+
+int set_global(const string& var, const string& val) {
+  if (varmap.find(var) == varmap.end()) {
+    cerr << "Unable to determine type of variable [" << var << "].\n";
     return 0;
- 
-  char buf[STRLEN];
-  while (ifs.getline(buf, STRLEN))
-  {
-    char *var, *val;
-    parse_equation(buf, var, val);
-    if (var != 0 && !set_global(var, val))
-      cerr << "Invalid variable [" << var << "] in parameter file." << endl;
+  }
+  if (!varmap[var].is_vector) {
+    switch (varmap[var].type) {
+      case (intvar):
+        fill_value(varmap[var], val, int(), atoi);
+        break;
+      case (longvar):
+        fill_value(varmap[var], val, int64_t(), atol);
+        break;
+      case (doublevar):
+        fill_value(varmap[var], val, double(), atof);
+        break;
+      case (stringvar):
+        *static_cast<string*>(varmap[var].ptr) = val;
+        break;
+    }
+  } else {
+    switch (varmap[var].type) {
+      case (intvar):
+        fill_vector(varmap[var], val, int(), atoi);
+        break;
+      case (longvar):
+        fill_vector(varmap[var], val, int64_t(), atol);
+        break;
+      case (doublevar):
+        fill_vector(varmap[var], val, double(), atof);
+        break;
+      case (stringvar):
+        {
+          const auto ptr = static_cast<vector<string>*>(varmap[var].ptr);
+          ptr->clear();
+          for (const auto& w :
+              split(strip(val).substr(1, val.size() - 2))) {
+            ptr->push_back(w);
+          }
+        }
+        // fill_vector(varmap[var], val, string(), std::identity);
+        break;
+    }
   }
   return 1;
+}
 
-} // parse_parfile
-
-//___________________________________________________________________________
+// __________________________________________________________________________
 // For an 'eqn' of the form ' A B C = D E F ', make 'var' equal to "C" and
-// 'val' equal to "D E F".  'var' and 'val' end up pointing in to the 'eqn'
-// buffer, which is mutilated by this routine.
+// 'val' equal to "D E F".
 
-void parse_equation(char* eqn, char*& var, char*& val)
-{
-  // Initialize var to something reasonable.
-  var = 0;
+void parse_equation(const string& eqn, string* var, string* val) {
+  var->clear();
+  val->clear();
 
-  // Exit if eqn isn't something reasonable, or starts with a #.
-  if (eqn == 0 || eqn[0] == '#')
+  auto eq_pos = eqn.find('=');
+  if (eq_pos == string::npos) {
     return;
- 
-  // If we have a newline character in 'eqn', make it a NUL character,
-  // then set 'val' pointing to the end of the input string.
-  if ((val = strchr(eqn, (int) '\n')) != 0)
-    *val-- = '\0';
-  else
-    val = strchr(eqn, (int) '\0') - 1;
- 
-  // Get rid of trailing spaces and tabs in the val - Only
-  // important for string variables.
-  while (val != (eqn - 1) && (*val == ' ' || *val == '\t'))
-    *val-- = '\0';
- 
-  // Set 'val' pointing to the character past the '=' character
-  // and make the '=' character a NUL character.  Give up if there
-  // is no '='.
-  if ((val = strchr(eqn, (int) '=')) == 0)
-    return;
-  *val++ = '\0';
- 
-  // Get rid of leading spaces in the val  - Again, this
-  // is only important for string variables.
-  while (*val == ' ' || *val == '\t')
-    val++;
- 
-  // Get a pointer to the name of the variable.  This has to be
-  // the last word before the equal sign.
-  char *nexttok;
-  if ((var = strtok(eqn, " \t")) == 0)
-    return;
-  else
-    while ((nexttok = strtok(0, " \t")) != 0)
-      var = nexttok;
-
-} // parse_equation
-
-//___________________________________________________________________________
-// Set the global variable 'var' equal to 'val' after translating the 
-// string 'val' to an appropriate type for 'var'.
-
-int set_global(char* var, char* val)
-{
-  int ind = 0;
-  int done = 0;
-  while (!done)
-  {
-    if (strcmp(var, varlist[ind].v) == 0)
-    {
-      switch (varlist[ind].t)
-      {
-      case (boollistvar):
-	{
-	  char *newp = (char *) varlist[ind].p;
-	  int i = 0;
-	  while (i < (int) strlen(val))
-	  {
-	    newp[i] = val[i] - '0';
-	    ++i;
-	  }
-	  newp[i] = 'b';
-	}
-	break;
-      case (intvar):
-	*((int *)varlist[ind].p) = atoi(val);
-	break;
-      case (longvar):
-	*((long *)varlist[ind].p) = atol(val);
-	break;
-      case (floatvar):
-	*((float *)varlist[ind].p) = atof(val);
-	break;
-      case (doublevar):
-	*((double *)varlist[ind].p) = atof(val);
-	break;
-      case (stringvar):
-	*((string*)varlist[ind].p) = val;
-	break;
-      default:
-	cerr << "Unable to determine type of variable [" << var << "].\n";
-	break;
-      }
-      return 1;
-    }
-    done = (varlist[++ind].p == 0);
   }
-  return 0;
 
-} // set_global
+  *var = strip(eqn.substr(0, eq_pos));
+  *val = strip(eqn.substr(eq_pos + 1, eqn.size() - eq_pos));
 
-//___________________________________________________________________________
-// Print out all the global variables.  They can be dumped to either cout
-// or a file.
-
-void dump_globals(string& dumpfile)
-{
-  if (dumpfile == "")
+  if ((*var)[0] == '#') {  // Ignore comments.
     return;
+  }
 
-  ofstream ofs;
-  if (dumpfile != "cout")
-  {
-    ofs.open(dumpfile);
-    if (!ofs.is_open())
-    {
-      cerr << "Unable to open dumpfile [" << dumpfile << "]\n";
+  // If 'var' contains multiple tokens, keep only the last one.
+  auto sp_pos = var->find_last_of(" \t\n\r");
+  if (sp_pos != string::npos) {
+    *var = var->substr(sp_pos + 1, var->size() - sp_pos);
+  }
+}
+
+// __________________________________________________________________________
+// Parse assignments of the form var=value to set global variables.
+
+void set_command_line_globals(int argc, char** argv) {
+  // Skip argv[1] if it is the name of a parameter file
+  int count = (argc > 1 && strchr(argv[1], '=') == 0) ? 2 : 1;
+
+  // Parse the remaining arguments
+  while (count < argc) {
+    string var, val;
+    parse_equation(argv[count++], &var, &val);
+    if (!set_global(var, val)) {
+      cerr << "Unknown variable [" << var << "] on command line.\n";
+    }
+  }
+}
+
+// __________________________________________________________________________
+
+int set_parameter_file_arg_globals(int argc, char** argv) {
+  // See if a parameter file was specified as the first command line arg.
+  string parfile;
+  if (argc > 1 && strchr(argv[1], '=') == 0) {
+    parfile = argv[1];
+  } else {
+    return 1;
+  }
+  return set_parameter_file_globals(parfile);
+}
+
+// __________________________________________________________________________
+// This can be called at anytime to update globals using assignments
+// from a parameter file 'parfile'.
+
+int set_parameter_file_globals(const string&  parfile) {
+  std::ifstream ifs(parfile);
+  if (!ifs) {
+    std::cerr << "Unable to open parameter file [" << parfile << "].\n";
+    return 0;
+  }
+
+  string buf, var, val;
+  while (std::getline(ifs, buf)) {
+    parse_equation(buf, &var, &val);
+    if (!set_global(var, val)) {
+      // Warn but don't fail on unknown variables.
+      cerr << "Unknown variable [" << var << "] in parameter file.\n";
+    }
+  }
+  return 1;
+}
+
+// __________________________________________________________________________
+// Print out all global variables to stdout or a file.
+
+void dump_globals(const string& dump_file) {
+  std::ofstream ofs;
+  if (!dump_file.empty()) {
+    ofs.open(dump_file);
+    if (!ofs) {
+      cerr << "Unable to open dump_file [" << dump_file << "].\n";
       return;
     }
   }
+  std::ostream& os = dump_file.empty() ? std::cout : ofs;
 
-  ostream& os = (dumpfile == "cout") ? (ostream&)cout : (ostream&)ofs;
-
-  int ind = 0;
-  int done = 0;
-  while (!done)
-  {
-    os << varlist[ind].v << " = ";
-    switch (varlist[ind].t)
-    {
-    case (boollistvar):
-      {
-	char *newp = (char *) varlist[ind].p;
-	while (*newp != 'b')
-	  os << int(*newp++);
+  for (const auto& vl : varmap) {
+    os << vl.first << " = ";
+    if (vl.second.is_vector) {
+      switch (vl.second.type) {
+        case (intvar):
+          print_vector(os, vl.second, int());
+          break;
+        case (longvar):
+          print_vector(os, vl.second, int64_t());
+          break;
+        case (doublevar):
+          print_vector(os, vl.second, double());
+          break;
+        case (stringvar):
+          print_vector(os, vl.second, string());
+          break;
       }
-      break;
-    case (intvar):
-      os << *((int *)varlist[ind].p);
-      break;
-    case (longvar):
-      os << *((long *)varlist[ind].p);
-      break;
-    case (floatvar):
-      os << *((float *)varlist[ind].p);
-      break;
-    case (doublevar):
-      os << *((double *)varlist[ind].p);
-      break;
-    case (stringvar):
-      os << *((string *)varlist[ind].p);
-      break;
-    default:
-      os << "[Unrecognized variable type]";
-      break;
+    } else {
+      switch (vl.second.type) {
+        case (intvar):
+          print_value(os, vl.second, int());
+          break;
+        case (longvar):
+          print_value(os, vl.second, int64_t());
+          break;
+        case (doublevar):
+          print_value(os, vl.second, double());
+          break;
+        case (stringvar):
+          os << "\"";
+          print_value(os, vl.second, string());
+          os << "\"";
+          break;
+      }
     }
-    os << endl;
-    done = (varlist[++ind].p == 0);
+    os << "\n";
   }
-
-} // dump_globals
-
-//___________________________________________________________________________
-// globals.c
+}
