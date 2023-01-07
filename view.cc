@@ -48,20 +48,20 @@ int viewobj::fontwidth;
 //___________________________________________________________________________
 // Establish a connection to a display and set up defaults.
 
-int viewobj::initX()
-{
+int viewobj::initX() {
   // Return now if this routine was already called.
   static int called = 0;
-  if (called > 0)
+  if (called > 0) {
     return 1;
+  }
 
   // Open the default display.
   if ((display = XOpenDisplay(0)) == 0)
     return 0;
-  
+
   // Set up the default screen.
   screen = DefaultScreen(display);
-  
+
   // Allocate a font.
   if ((xfs = XLoadQueryFont(display, "9x15")) == 0)
     return 0;
@@ -70,7 +70,7 @@ int viewobj::initX()
 
   // Set up the default colormap.
   cmap = DefaultColormap(display, screen);
-    
+  
   // Allocate some colorful colors.
   redcol.red = 50000; redcol.green = redcol.blue = 0;
   if (XAllocColor(display, cmap, &redcol) == 0)
@@ -90,74 +90,63 @@ int viewobj::initX()
   yellowcol.blue = 0; yellowcol.red = yellowcol.green = 50000;
   if (XAllocColor(display, cmap, &yellowcol) == 0)
     return 0;
-  
+
   // Allocate a bunch of gray scale colors or some colorful colors.
   if (colors)
   {
     // For now assuming NUMCOLORS = 125
     for (int i = 0; i < 5; ++i)
       for (int j = 0; j < 5; ++j)
-	for (int k = 0; k < 5; ++k)
-	{
-	  grays[i * 25 + j * 5 + k].red = 65535 - 65535 * i / 4;
-	  grays[i * 25 + j * 5 + k].green = 65535 - 65535 * j / 4;
-	  grays[i * 25 + j * 5 + k].blue = 65535 - 65535 * k / 4;
-	  if (XAllocColor(display, cmap, &grays[i * 25 + j * 5 + k]) == 0)
-	    return 0;
-	}
+        for (int k = 0; k < 5; ++k)
+        {
+          grays[i * 25 + j * 5 + k].red = 65535 - 65535 * i / 4;
+          grays[i * 25 + j * 5 + k].green = 65535 - 65535 * j / 4;
+          grays[i * 25 + j * 5 + k].blue = 65535 - 65535 * k / 4;
+          if (XAllocColor(display, cmap, &grays[i * 25 + j * 5 + k]) == 0)
+            return 0;
+        }
   }
   else
   {
     for (int i = 0; i < NUMCOLORS; ++i)
     {
       grays[i].red = grays[i].green = grays[i].blue = 
-	65535 - (65535 / (NUMCOLORS) * i);
+        65535 - (65535 / (NUMCOLORS) * i);
       if (XAllocColor(display, cmap, &grays[i]) == 0)
-	return 0;
+        return 0;
     }
   }
-  
+
   ++called;
   return 1;
-  
+
 } // initX
 
 //___________________________________________________________________________
 // Close a connection to a display.
 
-int viewobj::quitX()
-{
+int viewobj::quitX() {
 //  XCloseDisplay(display);
-  
   return 1;
-  
-} // quitX
+}
 
 //___________________________________________________________________________
 // Display a digit whose information is stored in 'viewgrid'.
 
-int viewobj::view(const char* title)
-{
-
-  // Initialize the display.  Successive calls are ignored.
-  if (!initX())
-  {
+int viewobj::view(const char* title) {
+  if (!initX()) {  // Initialize the display.  Successive calls are ignored.
     cerr << "\nCouldn't open display [" << XDisplayName(0)
       << "] to view images.\n\n";
     exit(1);
   }
-
-  // Initialize a window.
   init_window();
-
-  // Initialize the graphics context.
   init_gc();
-  
+
   // Make sure we don't crash if quit is chosen from the olwm.
   Atom wmdw = XInternAtom(display, "WM_DELETE_WINDOW", False);
   XSetWMProtocols(display, window, &wmdw, 1);
-  
-  // Initialize the window manager properties.
+
+  // Initialize window manager properties.
   char *name = strdup("digits");
   XTextProperty window_name;
   XStringListToTextProperty(&name, 1, &window_name);
@@ -167,38 +156,34 @@ int viewobj::view(const char* title)
   xwmh.flags = InputHint | StateHint;
   xwmh.input = True;
   xwmh.initial_state = NormalState;
-  XSetWMProperties(display, window, &window_name, 0, 0, 0, 
-                   &xsh, &xwmh, &xch);
+  XSetWMProperties(
+      display, window, &window_name, 0, 0, 0, &xsh, &xwmh, &xch);
   XFree(window_name.value);
-  
-  // Display the window.
-  XMapRaised(display, window);
-  
+
+  XMapRaised(display, window);  // Display the window.
+
   // Enter event loop.
   XEvent event;
-  while (True)
-  {
+  while (True) {
     XNextEvent(display, &event);
-    switch (event.type)
-    {
+    switch (event.type) {
      case ClientMessage :
       // Handle case WM kills the window.
-      if (event.xclient.data.l[0] == int(wmdw))
-      {
+      if (event.xclient.data.l[0] == int(wmdw)) {
         XDestroyWindow(display, window);
         XFlush(display);
         return 1;
       }
       break;
-      
+    
      case Expose:
       proc_expose(event, title);
       break;
-      
+    
      case ConfigureNotify:
       proc_confignotify(event);
       break;
-      
+    
      case ButtonPress:
       proc_buttonpress(event);
       break;
@@ -212,26 +197,23 @@ int viewobj::view(const char* title)
       break;
 
      case KeyRelease:
-      if (proc_keyrelease(event) == 'q')
-      {
-	XDestroyWindow(display, window);
-	XFlush(display);
-	return 1;
+      if (proc_keyrelease(event) == 'q') {
+        XDestroyWindow(display, window);
+        XFlush(display);
+        return 1;
       }
       break;
-      
+    
      default:
       break;
     }
   }
-  
-} // viewobj::view
+}
 
 //___________________________________________________________________________
 // Process an Expose event.
 
-void viewobj::proc_expose(XEvent &event, const char * title)
-{
+void viewobj::proc_expose(const XEvent &event, const char * title) {
   // Update the exposed region bounds.
   xlowx = min(xlowx, event.xexpose.x);
   xlowy = min(xlowy, event.xexpose.y);
@@ -241,13 +223,11 @@ void viewobj::proc_expose(XEvent &event, const char * title)
   // Leave now if there are more recent expose events.
   if (event.xexpose.count != 0)
     return;
-  
+
   // Write the title of the dataset if we have enough space.
-  if (imborder > int(fontheight))
-  {
+  if (imborder > int(fontheight)) {
     XSetForeground(display, gc, magentacol.pixel);
-    if (title == 0)
-    {
+    if (title == 0) {
       char tmp[STRLEN];
       strcpy(tmp, dataset.c_str());
       draw_string(basename(tmp), 0, 0);
@@ -255,7 +235,7 @@ void viewobj::proc_expose(XEvent &event, const char * title)
     else
       draw_string(title, 0, 0);
   }
-  
+
   // Draw the object.
   draw();
 
@@ -271,17 +251,14 @@ void viewobj::proc_expose(XEvent &event, const char * title)
     xlowx = xlowy = 1000000;
     xhighx = xhighy = 0;
   }
-  
-} // viewobj::proc_expose
+}
 
 //___________________________________________________________________________
 // Create a gc and initialize it's main properties.
 
-void viewobj::init_gc()
-{
+void viewobj::init_gc() {
   gc = XCreateGC(display, window, 0, 0);
   XSetFont(display, gc, xfs->fid);
-  
 } // viewobj::init_gc
 
 //___________________________________________________________________________
@@ -291,9 +268,9 @@ void viewobj::draw_point(float x, float y)
 {
   int pointsize = min(5, pixsize);
   XFillRectangle(display, window, gc, 
-		 int(imborder + x) - pointsize / 2, 
-		 int(imborder + y) - pointsize / 2,
-		 pointsize, pointsize);
+                 int(imborder + x) - pointsize / 2, 
+                 int(imborder + y) - pointsize / 2,
+                 pointsize, pointsize);
 
 } // viewobj::draw_point
 
@@ -312,9 +289,9 @@ void viewobj::draw_line(float x1, float y1, float x2, float y2, int middle)
   else
   {
     XDrawLine(display, window, gc, 
-	      int(imborder + (x1 + 0.5) * pixsize), 
+              int(imborder + (x1 + 0.5) * pixsize), 
               int(imborder + (y1 + 0.5) * pixsize),
-	      int(imborder + (x2 + 0.5) * pixsize), 
+              int(imborder + (x2 + 0.5) * pixsize), 
               int(imborder + (y2 + 0.5) * pixsize));
   }
 
