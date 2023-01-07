@@ -21,20 +21,10 @@
 
 int main(int argc, char** argv)
 {
-  // Initialize the global parameters.
-  init_globals();
-  
-  // Determine if there is a parameter file.  If yes, read in
-  // the values of global parameters from it.
-  get_parfile(argc, argv, parfile);
-  if (parfile != "" && !parse_parfile(parfile))
-  {
-    cerr << "Unable to open parameter file [" << parfile << "].\n";
+  if (!set_parameter_file_arg_globals(argc, argv)) {
     exit(1);
   }
-
-  // Determine the values for globals parameters set on the command line.
-  parse_argv(argc, argv);
+  set_command_line_globals(argc, argv);
 
   // Seed the random number generator.
   if (seed == 0)

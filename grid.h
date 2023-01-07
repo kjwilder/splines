@@ -1,9 +1,6 @@
 #ifndef GRID_H
 #define GRID_H
 
-//__________________________________________________________________________
-// Includes
-
 #include <cassert>
 #include <fstream>
 #include <cstring>
@@ -514,18 +511,30 @@ void grid<T>::sort(int left, int right)
 
 } // grid::sort
 
-//___________________________________________________________________________
-// Local defines
+template<class T>
+const grid<T> operator+(const grid<T>& m, const grid<T>& n) 
+{ grid<T> p = m; return (p += n); }
 
-#define cgrid grid<char>
-#define ucgrid grid<uchar>
-#define igrid grid<int>
-#define uigrid grid<uint>
-#define lgrid grid<long>
-#define fgrid grid<float>
-#define dgrid grid<double>
+template<class T>
+const grid<T> operator-(const grid<T>& m, const grid<T>& n) 
+{ grid<T> p = m; return (p -= n); }
 
-//___________________________________________________________________________
+typedef grid<char> cgrid;
+typedef grid<unsigned char> ucgrid;
+typedef grid<int> igrid;
+typedef grid<unsigned int> uigrid;
+typedef grid<long> lgrid;
+typedef grid<float> fgrid;
+typedef grid<double> dgrid;
+typedef std::vector<cgrid> cgrids;
+typedef std::vector<ucgrid> ucgrids;
+typedef std::vector<ucgrids> ucgridss;
+typedef std::vector<igrid> igrids;
+typedef std::vector<uigrid> uigrids;
+typedef std::vector<lgrid> lgrids;
+typedef std::vector<fgrid> fgrids;
+typedef std::vector<dgrid> dgrids;
+
 // grid.h
 
 #endif

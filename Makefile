@@ -5,7 +5,7 @@ SHELL = /bin/sh
 #.SUFFIXES: .cc .o .h .d
 
 # Indicate how to compile and link the program.
-CC = g++ 
+CC = g++ -std=c++11
 CCINCS = -I/usr/local/include
 #CCOPTS = -g -Wall -DUSE_ASSERTS -fno-implicit-templates
 CCOPTS = -g -Wall -DUSE_ASSERTS -Wno-c++11-extensions
@@ -36,4 +36,11 @@ sources : $(SOURCES)
 headers : $(HEADERS)
 
 clean :
-	rm -f *.o splines
+	rm -f *.o splines globals.h globals.cc
+
+globals.h:
+	curl -s https://raw.githubusercontent.com/kjwilder/globals/main/globals.h > globals.h
+
+globals.cc:
+	curl -s https://raw.githubusercontent.com/kjwilder/globals/main/globals.cc > globals.cc
+
