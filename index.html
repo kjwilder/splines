@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cubic Spline Drawer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #canvas {
+            border: 4px solid #000;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        #help-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #f0f0f0;
+            color: black;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #help-overlay.visible {
+            display: flex;
+        }
+
+        #help-content {
+            background: #ddd;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        #help-content h2 {
+            margin-bottom: 20px;
+            color: #000;
+        }
+
+        #help-content h3 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #000;
+        }
+
+        #help-content p, #help-content ul {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        #help-content ul {
+            list-style-position: inside;
+        }
+
+        #help-content kbd {
+            background: #8dd;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: #000;
+        }
+
+        .close-button {
+            float: right;
+            font-size: 28px;
+            cursor: pointer;
+            color: #000;
+        }
+
+        .close-button:hover {
+            color: #f44;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="help-overlay">
+        <div id="help-content">
+            <span class="close-button">&times;</span>
+            <h3>Mouse Controls</h3>
+            <ul>
+                <li>Click and drag control points to reshape the curve</li>
+                <li>The nearest control point is automatically selected</li>
+            </ul>
+
+            <h3>Keyboard Shortcuts</h3>
+            <ul>
+                <li><kbd>&lt;</kbd> or <kbd>,</kbd>: Decrease zoom</li>
+                <li><kbd>&gt;</kbd> or <kbd>.</kbd>: Increase zoom</li>
+                <li><kbd>g</kbd>: Toggle grid display</li>
+                <li><kbd>r</kbd>: Reset to default</li>
+                <li><kbd>h</kbd>: Show/hide this help</li>
+            </ul>
+
+            <p style="margin-top: 20px; text-align: center; color: #888;">
+                Press <kbd>h</kbd> or <kbd>Esc</kbd> to close
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            ctrl: [-10, -10, -4, -4, 4, 4, 10, 10],  // 4 control points equally spaced on diagonal
+            pixsize: 1,                        // Zoom level
+            imborder: 20,                      // Canvas border/padding
+            viewsize: 40,                      // World coordinate system size
+            showpixels: false,                 // Grid display toggle
+            currctrl: -1,                      // Currently dragging control point (-1 = none)
+        };
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            // Fill most of the viewport (95% to leave some margin)
+            const maxWidth = window.innerWidth * 0.95;
+            const maxHeight = window.innerHeight * 0.95;
+            const size = Math.min(maxWidth, maxHeight);
+
+            canvas.width = size;
+            canvas.height = size;
+
+            // Calculate pixsize to fit viewsize into canvas
+            state.pixsize = Math.floor((size - 2 * state.imborder) / state.viewsize);
+
+            draw();
+        }
+
+        function screenToWorld(sx, sy) {
+            // Convert screen coordinates to world coordinates (-20 to 20)
+            const x = (sx - state.imborder) / state.pixsize - state.viewsize / 2;
+            const y = (sy - state.imborder) / state.pixsize - state.viewsize / 2;
+            return { x, y };
+        }
+
+        function worldToScreen(wx, wy) {
+            // Convert world coordinates to screen coordinates
+            const center = state.viewsize / 2;
+            const x = (wx + center) * state.pixsize + state.imborder;
+            const y = (wy + center) * state.pixsize + state.imborder;
+            return { x, y };
+        }
+
+        function evaluateBezier(t, ctrl) {
+            const p1 = 1.0 / 3.0;
+            const p2 = 2.0 / 3.0;
+            const p3 = 1.0;
+
+            const fx = ctrl[0] * (p1 - t) * (p2 - t) * (p3 - t) * 9.0 / 2.0 +
+                       ctrl[2] * t * (p2 - t) * (p3 - t) * 27.0 / 2.0 +
+                       ctrl[4] * t * (t - p1) * (p3 - t) * 27.0 / 2.0 +
+                       ctrl[6] * t * (t - p1) * (t - p2) * 9.0 / 2.0;
+
+            const fy = ctrl[1] * (p1 - t) * (p2 - t) * (p3 - t) * 9.0 / 2.0 +
+                       ctrl[3] * t * (p2 - t) * (p3 - t) * 27.0 / 2.0 +
+                       ctrl[5] * t * (t - p1) * (p3 - t) * 27.0 / 2.0 +
+                       ctrl[7] * t * (t - p1) * (t - p2) * 9.0 / 2.0;
+
+            return { x: fx, y: fy };
+        }
+
+        function distance(x1, y1, x2, y2) {
+            const dx = x1 - x2;
+            const dy = y1 - y2;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getColors() {
+            return {
+                background: '#ffffff',
+                curve: '#ff0000',
+                points: '#0000ff',
+                grid: '#ff00ff'
+            };
+        }
+
+        function drawSpline() {
+            const colors = getColors();
+            const center = state.viewsize / 2;
+
+            ctx.strokeStyle = colors.curve;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            let first = true;
+            for (let t = 0; t < 0.999999; t += 0.001) {
+                const point = evaluateBezier(t, state.ctrl);
+                const screen = worldToScreen(point.x, point.y);
+
+                if (first) {
+                    ctx.moveTo(screen.x, screen.y);
+                    first = false;
+                } else {
+                    ctx.lineTo(screen.x, screen.y);
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        function drawControlPoints() {
+            const colors = getColors();
+            const center = state.viewsize / 2;
+            const pointSize = Math.max(1, state.pixsize);
+
+            ctx.fillStyle = colors.points;
+
+            for (let i = 0; i < 4; i++) {
+                const x = state.ctrl[i * 2];
+                const y = state.ctrl[i * 2 + 1];
+                const screen = worldToScreen(x, y);
+
+                ctx.beginPath();
+                ctx.arc(screen.x, screen.y, pointSize / 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        function drawGrid() {
+            if (!state.showpixels) return;
+
+            const colors = getColors();
+            ctx.strokeStyle = colors.grid;
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i <= state.viewsize; i++) {
+                for (let j = 0; j <= state.viewsize; j++) {
+                    const x = i * state.pixsize + state.imborder;
+                    const y = j * state.pixsize + state.imborder;
+                    ctx.strokeRect(x, y, state.pixsize, state.pixsize);
+                }
+            }
+        }
+
+        function draw() {
+            const colors = getColors();
+            ctx.fillStyle = colors.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            drawSpline();
+            drawControlPoints();
+        }
+
+        function findNearestControlPoint(worldX, worldY) {
+            let minDist = distance(worldX, worldY, state.ctrl[0], state.ctrl[1]);
+            let nearest = 0;
+
+            for (let i = 1; i < 4; i++) {
+                const d = distance(worldX, worldY, state.ctrl[i * 2], state.ctrl[i * 2 + 1]);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = i;
+                }
+            }
+
+            return nearest;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const world = screenToWorld(sx, sy);
+
+            state.currctrl = findNearestControlPoint(world.x, world.y);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (state.currctrl === -1) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const world = screenToWorld(sx, sy);
+
+            state.ctrl[state.currctrl * 2] = world.x;
+            state.ctrl[state.currctrl * 2 + 1] = world.y;
+
+            requestAnimationFrame(draw);
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (state.currctrl !== -1) {
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const world = screenToWorld(sx, sy);
+
+                state.ctrl[state.currctrl * 2] = world.x;
+                state.ctrl[state.currctrl * 2 + 1] = world.y;
+
+                draw();
+            }
+            state.currctrl = -1;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const sx = touch.clientX - rect.left;
+            const sy = touch.clientY - rect.top;
+            const world = screenToWorld(sx, sy);
+
+            state.currctrl = findNearestControlPoint(world.x, world.y);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (state.currctrl === -1) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const sx = touch.clientX - rect.left;
+            const sy = touch.clientY - rect.top;
+            const world = screenToWorld(sx, sy);
+
+            state.ctrl[state.currctrl * 2] = world.x;
+            state.ctrl[state.currctrl * 2 + 1] = world.y;
+
+            requestAnimationFrame(draw);
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (state.currctrl !== -1) {
+                draw();
+            }
+            state.currctrl = -1;
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const key = e.key;
+            if ((key === '<' || key === ',') && state.viewsize > 10) {
+                state.viewsize = Math.max(10, state.viewsize - 2);
+                resizeCanvas();
+            }
+            else if (key === '>' || key === '.') {
+                state.viewsize = Math.min(100, state.viewsize + 2);
+                resizeCanvas();
+            }
+            else if (key === 'g') {
+                state.showpixels = !state.showpixels;
+                draw();
+            }
+            else if (key === 'r') {
+                resetState();
+            }
+            else if (key === 'h') {
+                toggleHelp();
+            }
+            else if (key === 'Escape') {
+                document.getElementById('help-overlay').classList.remove('visible');
+            }
+        });
+
+        function resetState() {
+            state.ctrl = [-10, -10, -4, -4, 4, 4, 10, 10];
+            state.pixsize = 4;
+            state.showpixels = false;
+            resizeCanvas();
+        }
+
+        function toggleHelp() {
+            const overlay = document.getElementById('help-overlay');
+            overlay.classList.toggle('visible');
+        }
+
+        document.querySelector('.close-button').addEventListener('click', () => {
+            document.getElementById('help-overlay').classList.remove('visible');
+        });
+
+        document.getElementById('help-overlay').addEventListener('click', (e) => {
+            if (e.target.id === 'help-overlay') {
+                e.target.classList.remove('visible');
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+        });
+
+        function init() {
+            resizeCanvas();
+
+            // Show help on first visit
+            if (!localStorage.getItem('splineVisited')) {
+                localStorage.setItem('splineVisited', 'true');
+                setTimeout(toggleHelp, 500);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
