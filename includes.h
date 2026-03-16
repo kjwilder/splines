@@ -10,6 +10,7 @@
 #endif
 
 #include <cassert>
+#include <cmath>
 
 #define STRLEN 255
 #define FUZZ 0.001

@@ -1,6 +1,3 @@
-#ifndef IMAGE_C
-#define IMAGE_C
-
 #include <iostream>
 #include <sys/types.h>
 #include <unistd.h>
@@ -150,7 +147,8 @@ int image::proc_buttonrelease(XEvent &event)
 
 char image::proc_keyrelease(XEvent &event)
 {
-  char thechar = XkbKeycodeToKeysym(display, event.xkey.keycode, 0, 0);
+  KeySym ks = XkbKeycodeToKeysym(display, event.xkey.keycode, 0, 0);
+  char thechar = (ks < 128) ? static_cast<char>(ks) : 0;
   if (thechar == 'r')
   {
     revvideo = 1 - revvideo;
@@ -190,4 +188,4 @@ char image::proc_keyrelease(XEvent &event)
 //___________________________________________________________________________
 // image.C
 
-#endif // IMAGE_C
+// image.cc
