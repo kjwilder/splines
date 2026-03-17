@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cstring>
 #include <iostream>
+#include <vector>
 
 #include "includes.h"
 
