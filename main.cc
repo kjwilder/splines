@@ -17,6 +17,10 @@
 #include "spline.h"
 #include "globals.h"
 
+using std::cout;
+using std::cerr;
+using std::endl;
+
 //___________________________________________________________________________
 
 int main(int argc, char** argv)

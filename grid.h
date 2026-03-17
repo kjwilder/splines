@@ -4,6 +4,7 @@
 #include <cassert>
 #include <fstream>
 #include <cstring>
+#include <iostream>
 
 #include "includes.h"
 
@@ -86,6 +87,7 @@ friend class image;
   // Useful Utility Functions
   grid<T>& operator<<(grid &m);
   grid<T>& operator+=(const grid &m);
+  grid<T>& operator-=(const grid &m);
   grid<T> operator*(const grid &m) const;
   void normalize(T val);
   grid<T> transpose() const;
@@ -129,10 +131,10 @@ void grid<T>::write(const char *file)
   }
 
   ofs.write("GR11", 4);
-  ofs.write(&nx, sizeof(nx));
-  ofs.write(&ny, sizeof(ny));
+  ofs.write(reinterpret_cast<const char*>(&nx), sizeof(nx));
+  ofs.write(reinterpret_cast<const char*>(&ny), sizeof(ny));
   if (nx > 0 && ny > 0)
-    ofs.write(sto, nx * ny * sizeof(T));
+    ofs.write(reinterpret_cast<const char*>(sto), nx * ny * sizeof(T));
 
 } // grid::write
 
@@ -147,10 +149,10 @@ int grid<T>::write(ofstream& os)
   if (!os.is_open())
     return 0;
 
-  os.write(&nx, sizeof(nx));
-  os.write(&ny, sizeof(ny));
+  os.write(reinterpret_cast<const char*>(&nx), sizeof(nx));
+  os.write(reinterpret_cast<const char*>(&ny), sizeof(ny));
   if (nx > 0 && ny > 0)
-    os.write(sto, nx * ny * sizeof(T));
+    os.write(reinterpret_cast<const char*>(sto), nx * ny * sizeof(T));
 
   return 1;
 
@@ -186,32 +188,32 @@ int grid<T>::read(const char *file)
     std::cerr << "The file [" << file << "] is not a grid file" << endl;
     return 0;
   }
- 
+
   freegrid();
   if (!memcmp(version, "GR11", 4))
   {
-    ifs.read(&nx, sizeof(nx));
-    ifs.read(&ny, sizeof(ny));
+    ifs.read(reinterpret_cast<char*>(&nx), sizeof(nx));
+    ifs.read(reinterpret_cast<char*>(&ny), sizeof(ny));
     assert(nx >= 0 && ny >= 0);
     if (nx > 0 && ny > 0)
     {
       sto = new T[nx * ny];
-      ifs.read(sto, nx * ny * sizeof(T));
+      ifs.read(reinterpret_cast<char*>(sto), nx * ny * sizeof(T));
     }
   }
   else if (!memcmp(version, "MA11", 4))
   {
-    ifs.read(&ny, sizeof(ny));
-    ifs.read(&ny, sizeof(ny));
-    ifs.read(&nx, sizeof(nx));
-    ifs.read(&nx, sizeof(nx));
+    ifs.read(reinterpret_cast<char*>(&ny), sizeof(ny));
+    ifs.read(reinterpret_cast<char*>(&ny), sizeof(ny));
+    ifs.read(reinterpret_cast<char*>(&nx), sizeof(nx));
+    ifs.read(reinterpret_cast<char*>(&nx), sizeof(nx));
     nx += 1;
     ny += 1;
     assert(nx >= 0 && ny >= 0);
     if (nx > 0 && ny > 0)
     {
       sto = new T[nx * ny];
-      ifs.read(sto, nx * ny * sizeof(T));
+      ifs.read(reinterpret_cast<char*>(sto), nx * ny * sizeof(T));
     }
   }
   else
@@ -245,13 +247,13 @@ int grid<T>::read(ifstream& is)
     return 0;
 
   freegrid();
-  is.read(&nx, sizeof(nx));
-  is.read(&ny, sizeof(ny));
+  is.read(reinterpret_cast<char*>(&nx), sizeof(nx));
+  is.read(reinterpret_cast<char*>(&ny), sizeof(ny));
   assert(nx >= 0 && ny >= 0);
   if (nx > 0 && ny > 0)
   {
     sto = new T[nx * ny];
-    is.read(sto, nx * ny * sizeof(T));
+    is.read(reinterpret_cast<char*>(sto), nx * ny * sizeof(T));
   }
 
   assert(invariant());
@@ -316,6 +318,24 @@ grid<T>& grid<T>::operator+=(const grid& m)
   return *this;
 
 } // grid::operator+=
+
+//___________________________________________________________________________
+// Subtract another grid from the current grid.
+
+template<class T>
+grid<T>& grid<T>::operator-=(const grid& m)
+{
+  assert(invariant() && m.invariant());
+  assert(nx == m.nx && ny == m.ny);
+
+  for (int i = 0; i < nx * ny; ++i)
+    sto[i] -= m.sto[i];
+
+  assert(invariant() && m.invariant());
+
+  return *this;
+
+} // grid::operator-=
 
 //___________________________________________________________________________
 
@@ -516,7 +536,7 @@ const grid<T> operator+(const grid<T>& m, const grid<T>& n)
 { grid<T> p = m; return (p += n); }
 
 template<class T>
-const grid<T> operator-(const grid<T>& m, const grid<T>& n) 
+const grid<T> operator-(const grid<T>& m, const grid<T>& n)
 { grid<T> p = m; return (p -= n); }
 
 typedef grid<char> cgrid;

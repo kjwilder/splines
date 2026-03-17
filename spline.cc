@@ -1,6 +1,3 @@
-#ifndef SPLINE_C
-#define SPLINE_C
-
 //___________________________________________________________________________
 
 #include <iostream>
@@ -11,10 +8,11 @@
 #include <X11/Xutil.h>
 #include <X11/XKBlib.h>
 #undef String
-#include <math.h>
+#include <cmath>
 
 #include "includes.h"
 #include "spline.h"
+#include "spline_math.h"
 #include "globals.h"
 
 //___________________________________________________________________________
@@ -44,32 +42,18 @@ void spline::init_window()
 
 void spline::draw()
 {
-  const double p1 = 1.0 / 3.0;
-  const double p2 = 2.0 / 3.0;
-  const double p3 = 1.0;
   const auto center = viewsize / 2;
 
   XSetForeground(display, gc, redcol.pixel);
-  for (double t = 0; t < 0.999999; t += 0.001)
+  double fx1, fy1;
+  evaluate_spline(ctrl, 0, fx1, fy1);
+  for (double t = 0.001; t < 1.0; t += 0.001)
   {
-    double tt = t + 0.001;
-    double fx1 = ctrl[0] * (p1 - t) * (p2 - t) * (p3 - t) * 9.0 / 2.0 +
-      ctrl[2] * t * (p2 - t) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[4] * t * (t - p1) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[6] * t * (t - p1) * (t - p2) * 9.0 / 2.0;
-    double fy1 = ctrl[1] * (p1 - t) * (p2 - t) * (p3 - t) * 9.0 / 2.0 +
-      ctrl[3] * t * (p2 - t) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[5] * t * (t - p1) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[7] * t * (t - p1) * (t - p2) * 9.0 / 2.0;
-    double fx2 = ctrl[0] * (p1 - tt) * (p2 - tt) * (p3 - tt) * 9.0 / 2.0 +
-      ctrl[2] * tt * (p2 - tt) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[4] * tt * (tt - p1) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[6] * tt * (tt - p1) * (tt - p2) * 9.0 / 2.0;
-    double fy2 = ctrl[1] * (p1 - tt) * (p2 - tt) * (p3 - tt) * 9.0 / 2.0 +
-      ctrl[3] * tt * (p2 - tt) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[5] * tt * (tt - p1) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[7] * tt * (tt - p1) * (tt - p2) * 9.0 / 2.0;
+    double fx2, fy2;
+    evaluate_spline(ctrl, t, fx2, fy2);
     draw_line(fx1 + center, fy1 + center, fx2 + center, fy2 + center, 0);
+    fx1 = fx2;
+    fy1 = fy2;
   }
   XSetForeground(display, gc, bluecol.pixel);
   draw_point(pixsize * (ctrl[0] + center), pixsize * (ctrl[1] + center));
@@ -94,31 +78,16 @@ void spline::draw()
 
 void spline::erase_spline(int sx, int sy)
 {
-  const double p1 = 1.0 / 3.0;
-  const double p2 = 2.0 / 3.0;
-  const double p3 = 1.0;
-
   XSetForeground(display, gc, WhitePixel(display, screen));
-  for (double t = 0; t < 0.999999; t += 0.001)
+  double fx1, fy1;
+  evaluate_spline(ctrl, 0, fx1, fy1);
+  for (double t = 0.001; t < 1.0; t += 0.001)
   {
-    double tt = t + 0.001;
-    double fx1 = ctrl[0] * (p1 - t) * (p2 - t) * (p3 - t) * 9.0 / 2.0 +
-      ctrl[2] * t * (p2 - t) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[4] * t * (t - p1) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[6] * t * (t - p1) * (t - p2) * 9.0 / 2.0;
-    double fy1 = ctrl[1] * (p1 - t) * (p2 - t) * (p3 - t) * 9.0 / 2.0 +
-      ctrl[3] * t * (p2 - t) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[5] * t * (t - p1) * (p3 - t) * 27.0 / 2.0 +
-      ctrl[7] * t * (t - p1) * (t - p2) * 9.0 / 2.0;
-    double fx2 = ctrl[0] * (p1 - tt) * (p2 - tt) * (p3 - tt) * 9.0 / 2.0 +
-      ctrl[2] * tt * (p2 - tt) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[4] * tt * (tt - p1) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[6] * tt * (tt - p1) * (tt - p2) * 9.0 / 2.0;
-    double fy2 = ctrl[1] * (p1 - tt) * (p2 - tt) * (p3 - tt) * 9.0 / 2.0 +
-      ctrl[3] * tt * (p2 - tt) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[5] * tt * (tt - p1) * (p3 - tt) * 27.0 / 2.0 +
-      ctrl[7] * tt * (tt - p1) * (tt - p2) * 9.0 / 2.0;
+    double fx2, fy2;
+    evaluate_spline(ctrl, t, fx2, fy2);
     draw_line(fx1 + sx, fy1 + sy, fx2 + sx, fy2 + sy, 0);
+    fx1 = fx2;
+    fy1 = fy2;
   }
   draw_point(pixsize * (ctrl[0] + sx), pixsize * (ctrl[1] + sy));
   draw_point(pixsize * (ctrl[2] + sx), pixsize * (ctrl[3] + sy));
@@ -251,7 +220,8 @@ int spline::proc_buttonrelease(XEvent &event)
 
 char spline::proc_keyrelease(XEvent &event)
 {
-  char thechar = XkbKeycodeToKeysym(display, event.xkey.keycode, 0, 0);
+  KeySym ks = XkbKeycodeToKeysym(display, event.xkey.keycode, 0, 0);
+  char thechar = (ks < 128) ? static_cast<char>(ks) : 0;
 
   if (thechar == 'r')
   {
@@ -296,4 +266,4 @@ char spline::proc_keyrelease(XEvent &event)
 //___________________________________________________________________________
 // spline.C
 
-#endif // SPLINE_C
+// spline.cc

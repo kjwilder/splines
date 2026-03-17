@@ -1,6 +1,3 @@
-#ifndef VIEW_C
-#define VIEW_C
-
 //___________________________________________________________________________
 
 extern char *ltos(const long x);
@@ -147,11 +144,14 @@ int viewobj::view(const char* title) {
   XSetWMProtocols(display, window, &wmdw, 1);
 
   // Initialize window manager properties.
-  char *name = strdup("digits");
+  char name[] = "digits";
+  char *namep = name;
   XTextProperty window_name;
-  XStringListToTextProperty(&name, 1, &window_name);
-  xch.res_class = strdup("Drop");
-  xch.res_name = strdup("drop");
+  XStringListToTextProperty(&namep, 1, &window_name);
+  char res_class[] = "Drop";
+  char res_name[] = "drop";
+  xch.res_class = res_class;
+  xch.res_name = res_name;
   xsh.flags = PPosition | PSize;
   xwmh.flags = InputHint | StateHint;
   xwmh.input = True;
@@ -169,7 +169,7 @@ int viewobj::view(const char* title) {
     switch (event.type) {
      case ClientMessage :
       // Handle case WM kills the window.
-      if (event.xclient.data.l[0] == int(wmdw)) {
+      if (static_cast<Atom>(event.xclient.data.l[0]) == wmdw) {
         XDestroyWindow(display, window);
         XFlush(display);
         return 1;
@@ -329,4 +329,4 @@ const char *basename(const char *name)
 //___________________________________________________________________________
 // view.C
 
-#endif // VIEW_C
+// view.cc
